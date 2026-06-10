@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exchange Rate Converter — AUD · USD · KHR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .currency-flag { font-size: 1.5rem; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+  <div class="max-w-2xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-blue-400 to-green-400 bg-clip-text text-transparent">
+        Exchange Rate Converter
+      </h1>
+      <p class="text-gray-400 mt-1">AUD · USD · KHR — Real-time rates</p>
+    </header>
+
+    <!-- Live Rates Bar -->
+    <div id="rates-bar" class="bg-gray-900 rounded-xl p-4 mb-6 border border-gray-800">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span id="live-dot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
+          <span id="rates-status" class="text-sm text-gray-400">Loading rates...</span>
+        </div>
+        <button id="refresh-btn" onclick="fetchRates()" class="text-sm text-blue-400 hover:text-blue-300 transition px-3 py-1 rounded-lg hover:bg-gray-800">
+          ↻ Refresh
+        </button>
+      </div>
+      <div id="rates-display" class="grid grid-cols-3 gap-3 mt-3 text-center">
+        <div class="bg-gray-800 rounded-lg p-3">
+          <div class="text-2xl mb-1">🇦🇺</div>
+          <div class="text-xs text-gray-400">1 AUD</div>
+          <div id="rate-aud" class="font-semibold text-green-400">—</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <div class="text-2xl mb-1">🇺🇸</div>
+          <div class="text-xs text-gray-400">1 USD</div>
+          <div id="rate-usd" class="font-semibold text-blue-400">—</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <div class="text-2xl mb-1">🇰🇭</div>
+          <div class="text-xs text-gray-400">1 KHR</div>
+          <div id="rate-khr" class="font-semibold text-yellow-400">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Converter -->
+    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Convert</h2>
+
+      <div class="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
+        <!-- From -->
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">From</label>
+          <select id="from-currency" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+            <option value="AUD">🇦🇺 AUD — Australian Dollar</option>
+            <option value="USD">🇺🇸 USD — US Dollar</option>
+            <option value="KHR">🇰🇭 KHR — Cambodian Riel</option>
+          </select>
+          <input id="from-amount" type="number" value="1" min="0" step="any"
+            class="w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-3 text-xl font-mono text-white focus:outline-none focus:border-blue-500"
+            oninput="convert()">
+        </div>
+
+        <!-- Swap button -->
+        <button onclick="swapCurrencies()" class="mb-1 p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition text-gray-400 hover:text-white" title="Swap currencies">
+          ⇄
+        </button>
+
+        <!-- To -->
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">To</label>
+          <select id="to-currency" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+            <option value="USD">🇺🇸 USD — US Dollar</option>
+            <option value="AUD">🇦🇺 AUD — Australian Dollar</option>
+            <option value="KHR">🇰🇭 KHR — Cambodian Riel</option>
+          </select>
+          <div id="to-amount" class="w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-3 text-xl font-mono text-green-400 min-h-[52px]">
+            —
+          </div>
+        </div>
+      </div>
+
+      <div id="conversion-detail" class="mt-3 text-sm text-gray-500 text-center"></div>
+    </div>
+
+    <!-- Quick Reference Table -->
+    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+      <h2 class="text-lg font-semibold mb-4">Quick Reference</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-gray-400 border-b border-gray-800">
+              <th class="text-left py-2">Amount</th>
+              <th class="text-right py-2">🇦🇺 AUD</th>
+              <th class="text-right py-2">🇺🇸 USD</th>
+              <th class="text-right py-2">🇰🇭 KHR</th>
+            </tr>
+          </thead>
+          <tbody id="ref-table-body">
+            <tr class="text-gray-500"><td colspan="4" class="py-4 text-center">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Rate History -->
+    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">Rate History</h2>
+        <div class="flex gap-2">
+          <button onclick="exportHistory()" class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition text-gray-300">
+            ↓ Export JSON
+          </button>
+          <label class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition text-gray-300 cursor-pointer">
+            ↑ Import JSON
+            <input type="file" accept=".json" onchange="importHistory(event)" class="hidden">
+          </label>
+          <button onclick="clearHistory()" class="text-xs bg-red-900/50 hover:bg-red-900/80 px-3 py-1.5 rounded-lg transition text-red-300">
+            Clear
+          </button>
+        </div>
+      </div>
+      <div id="history-list" class="space-y-2 max-h-64 overflow-y-auto">
+        <p class="text-gray-500 text-sm text-center py-4">No history yet — rates are saved automatically on each refresh.</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center text-gray-600 text-xs pb-8">
+      <p>Rates from <a href="https://www.exchangerate-api.com" target="_blank" class="text-gray-500 hover:text-gray-400">exchangerate-api.com</a> (free tier, updated daily)</p>
+      <p class="mt-1">Built for Adam — runs 100% in browser, no server needed</p>
+    </footer>
+  </div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+const CURRENCIES = ['AUD', 'USD', 'KHR'];
+const FLAGS = { AUD: '🇦🇺', USD: '🇺🇸', KHR: '🇰🇭' };
+const NAMES = { AUD: 'Australian Dollar', USD: 'US Dollar', KHR: 'Cambodian Riel' };
+
+let rates = {};       // { AUD: 1, USD: 0.703, KHR: 2850.13 }
+let ratesDate = '';
+let history = [];     // [{ date, rates, timestamp }]
+
+// ── Init ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadHistory();
+  fetchRates();
+});
+
+// ── Fetch Rates ────────────────────────────────────────────────────────
+async function fetchRates() {
+  const dot = document.getElementById('live-dot');
+  const status = document.getElementById('rates-status');
+  const btn = document.getElementById('refresh-btn');
+
+  dot.className = 'w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse';
+  status.textContent = 'Fetching rates...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('https://open.er-api.com/v6/latest/AUD');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    rates = {
+      AUD: data.rates.AUD,
+      USD: data.rates.USD,
+      KHR: data.rates.KHR
+    };
+    ratesDate = data.time_last_update_utc;
+
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-green-500';
+    status.textContent = `Updated ${ratesDate.split(' ')[0]}`;
+
+    updateRatesDisplay();
+    updateRefTable();
+    convert();
+    saveRateSnapshot();
+  } catch (err) {
+    dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+    status.textContent = `Error: ${err.message}`;
+    console.error('Rate fetch failed:', err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Display ────────────────────────────────────────────────────────────
+function updateRatesDisplay() {
+  const audUsd = rates.USD / rates.AUD;
+  const usdKhr = rates.KHR / rates.USD;
+  const khrAud = rates.AUD / rates.KHR;
+
+  document.getElementById('rate-aud').textContent = `${formatNum(audUsd)} USD`;
+  document.getElementById('rate-usd').textContent = `${formatNum(usdKhr, 2)} KHR`;
+  document.getElementById('rate-khr').textContent = `${formatNum(khrAud, 6)} AUD`;
+}
+
+function updateRefTable() {
+  const amounts = [1, 5, 10, 50, 100, 500, 1000];
+  const tbody = document.getElementById('ref-table-body');
+  tbody.innerHTML = '';
+
+  amounts.forEach(amount => {
+    const aud = amount;
+    const usd = amount * (rates.USD / rates.AUD);
+    const khr = amount * (rates.KHR / rates.AUD);
+
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-gray-800/50 fade-in';
+    tr.innerHTML = `
+      <td class="py-2 font-mono text-gray-300">${amount.toLocaleString()}</td>
+      <td class="py-2 text-right font-mono text-green-400">${aud.toLocaleString()}</td>
+      <td class="py-2 text-right font-mono text-blue-400">${formatNum(usd)} USD</td>
+      <td class="py-2 text-right font-mono text-yellow-400">${formatNum(khr, 0)} KHR</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Convert ────────────────────────────────────────────────────────────
+function convert() {
+  const from = document.getElementById('from-currency').value;
+  const to = document.getElementById('to-currency').value;
+  const amount = parseFloat(document.getElementById('from-amount').value) || 0;
+
+  if (!rates.AUD) return;
+
+  const amountInAud = amount / rates[from];
+  const result = amountInAud * rates[to];
+
+  const decimals = to === 'KHR' ? 0 : 4;
+  document.getElementById('to-amount').textContent = formatNum(result, decimals);
+
+  const rate = rates[to] / rates[from];
+  document.getElementById('conversion-detail').textContent =
+    `1 ${from} = ${formatNum(rate, to === 'KHR' ? 2 : 6)} ${to}`;
+}
+
+// ── Swap ───────────────────────────────────────────────────────────────
+function swapCurrencies() {
+  const from = document.getElementById('from-currency');
+  const to = document.getElementById('to-currency');
+  const temp = from.value;
+  from.value = to.value;
+  to.value = temp;
+  convert();
+}
+
+// ── Rate History (localStorage + JSON) ─────────────────────────────────
+function saveRateSnapshot() {
+  const snapshot = {
+    date: ratesDate,
+    timestamp: Date.now(),
+    rates: { ...rates }
+  };
+
+  const existing = history.findIndex(h => h.date === snapshot.date);
+  if (existing >= 0) {
+    history[existing] = snapshot;
+  } else {
+    history.unshift(snapshot);
+  }
+
+  if (history.length > 90) history = history.slice(0, 90);
+
+  localStorage.setItem('exchange-rate-history', JSON.stringify(history));
+  renderHistory();
+}
+
+function loadHistory() {
+  try {
+    const data = localStorage.getItem('exchange-rate-history');
+    history = data ? JSON.parse(data) : [];
+    renderHistory();
+  } catch (e) {
+    history = [];
+  }
+}
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  if (history.length === 0) {
+    list.innerHTML = '<p class="text-gray-500 text-sm text-center py-4">No history yet — rates are saved automatically on each refresh.</p>';
+    return;
+  }
+
+  list.innerHTML = history.slice(0, 20).map(entry => {
+    const audUsd = entry.rates.USD / entry.rates.AUD;
+    const audKhr = entry.rates.KHR / entry.rates.AUD;
+    return `
+      <div class="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 text-sm fade-in">
+        <span class="text-gray-400">${entry.date.split(' ')[0]}</span>
+        <span class="font-mono text-green-400">1 AUD = ${formatNum(audUsd)} USD</span>
+        <span class="font-mono text-yellow-400">= ${formatNum(audKhr, 0)} KHR</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function exportHistory() {
+  const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `exchange-rates-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importHistory(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const imported = JSON.parse(e.target.result);
+      if (Array.isArray(imported)) {
+        history = [...imported, ...history];
+        const seen = new Set();
+        history = history.filter(h => {
+          if (seen.has(h.date)) return false;
+          seen.add(h.date);
+          return true;
+        });
+        history.sort((a, b) => b.timestamp - a.timestamp);
+        localStorage.setItem('exchange-rate-history', JSON.stringify(history));
+        renderHistory();
+      }
+    } catch (err) {
+      alert('Invalid JSON file');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function clearHistory() {
+  if (confirm('Clear all rate history?')) {
+    history = [];
+    localStorage.removeItem('exchange-rate-history');
+    renderHistory();
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function formatNum(n, decimals = 4) {
+  if (isNaN(n)) return '—';
+  return n.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  });
+}
+</script>
+
+</body>
+</html>

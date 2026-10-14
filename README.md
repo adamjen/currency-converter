@@ -94,7 +94,9 @@ KHR card before the first fetch resolves).
 ## Quick Reference (cheat sheet)
 
 Three cards, one per source currency, driven by `REF_PRESETS` — round amounts only: AUD
-10/50/100, USD 5/10/50, and KHR 1k/5k/10k/20k/50k/100k (real Cambodian note denominations).
+10/50/100, USD 5/10/50, and KHR 10k/20k/50k (real Cambodian note denominations). Three rows
+each so the cards line up.
+
 The line under the heading is the mental anchor, rounded to the nearest 100 riel:
 
 ```
@@ -103,7 +105,7 @@ A$1 ≈ 2,700 riel · US$1 ≈ 4,000 riel · 10,000 riel ≈ A$3.68 / US$2.47
 
 Tapping a row loads that amount into the converter (`quickFill()`). Cheat-sheet cells use 2 dp
 for AUD/USD and 0 dp for KHR — deliberately rougher than the converter box, which uses
-`formatAmount()`. Change the amounts by editing `REF_PRESETS`.
+`formatAmount()`.
 
 ## Input & events (mobile)
 

@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy this file to rates.json (same folder as index.html) to run the app on fixed rates — it then takes priority over the live API. 'base' is the currency 1 unit is quoted in (AUD, USD or KHR); each value is what 1 base is worth in that currency. Delete rates.json to go back to live rates.",
+  "date": "2026-10-14",
+  "base": "USD",
+  "rates": {
+    "AUD": 1.4877,
+    "USD": 1,
+    "KHR": 4056.37
+  }
+}

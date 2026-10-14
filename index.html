@@ -104,24 +104,14 @@
       </form>
     </div>
 
-    <!-- Quick Reference Table -->
+    <!-- Quick Reference — tourist cheat sheet -->
     <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-      <h2 class="text-lg font-semibold mb-4">Quick Reference</h2>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-gray-400 border-b border-gray-800">
-              <th class="text-left py-2">Amount</th>
-              <th class="text-right py-2">🇦🇺 AUD</th>
-              <th class="text-right py-2">🇺🇸 USD</th>
-              <th class="text-right py-2">🇰🇭 KHR</th>
-            </tr>
-          </thead>
-          <tbody id="ref-table-body">
-            <tr class="text-gray-500"><td colspan="4" class="py-4 text-center">Loading...</td></tr>
-          </tbody>
-        </table>
+      <h2 class="text-lg font-semibold mb-1">Quick Reference</h2>
+      <p id="ref-anchor" class="text-sm text-gray-400 mb-4">Loading rates...</p>
+      <div id="ref-cards" class="grid gap-4 sm:grid-cols-3">
+        <p class="text-gray-500 text-sm sm:col-span-3">Loading...</p>
       </div>
+      <p class="text-xs text-gray-600 mt-3">Tap any row to load it into the converter.</p>
     </div>
 
     <!-- Rate History -->
@@ -292,26 +282,75 @@ function updateRatesDisplay() {
   document.getElementById('rate-khr').textContent = fmt(khrAud, 6, 'AUD');
 }
 
+// Round amounts you can eyeball on the street. KHR uses real Cambodian note
+// denominations; AUD/USD use common note values. Tap a row to load it.
+const REF_PRESETS = [
+  { code: 'AUD', amounts: [10, 50, 100] },
+  { code: 'USD', amounts: [5, 10, 50] },
+  { code: 'KHR', amounts: [1000, 5000, 10000, 20000, 50000, 100000] }
+];
+const REF_COLOUR = { AUD: 'text-green-400', USD: 'text-blue-400', KHR: 'text-yellow-400' };
+
+function roundTo(n, step) { return Math.round(n / step) * step; }
+
+function quickFill(from, to, amount) {
+  document.getElementById('from-currency').value = from;
+  document.getElementById('to-currency').value = to;
+  document.getElementById('from-amount').value = amount;
+  convert();
+  document.getElementById('convert-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 function updateRefTable() {
-  const amounts = [1, 5, 10, 50, 100, 500, 1000];
-  const tbody = document.getElementById('ref-table-body');
-  tbody.innerHTML = '';
+  const wrap = document.getElementById('ref-cards');
+  const anchor = document.getElementById('ref-anchor');
+  if (!wrap) return;
 
-  amounts.forEach(amount => {
-    const aud = amount;
-    const usd = amount * (rates.USD / rates.AUD);
-    const khr = amount * (rates.KHR / rates.AUD);
+  if (!rates.AUD || !rates.KHR) {
+    wrap.innerHTML = '<p class="text-gray-500 text-sm sm:col-span-3">Waiting for rates…</p>';
+    return;
+  }
 
-    const tr = document.createElement('tr');
-    tr.className = 'border-b border-gray-800/50 fade-in';
-    tr.innerHTML = `
-      <td class="py-2 font-mono text-gray-300">${amount.toLocaleString()}</td>
-      <td class="py-2 text-right font-mono text-green-400">${aud.toLocaleString()}</td>
-      <td class="py-2 text-right font-mono text-blue-400">${fmt(usd, 4, 'USD')}</td>
-      <td class="py-2 text-right font-mono text-yellow-400">${fmt(khr, 0, 'KHR')}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+  // Mental-math anchors, rounded to something you can hold in your head.
+  const khrPerAud = rates.KHR / rates.AUD;
+  const khrPerUsd = rates.KHR / rates.USD;
+  if (anchor) {
+    anchor.textContent =
+      `A$1 ≈ ${roundTo(khrPerAud, 100).toLocaleString()} riel · ` +
+      `US$1 ≈ ${roundTo(khrPerUsd, 100).toLocaleString()} riel · ` +
+      `10,000 riel ≈ A$${(10000 / khrPerAud).toFixed(2)} / US$${(10000 / khrPerUsd).toFixed(2)}`;
+  }
+
+  wrap.innerHTML = REF_PRESETS.map(preset => {
+    const targets = CURRENCIES.filter(c => c !== preset.code);
+
+    const head = `<th class="text-left py-1 text-xs font-normal text-gray-500">${preset.code}</th>` +
+      targets.map(t => `<th class="text-right py-1 text-xs font-normal text-gray-500">${FLAGS[t]} ${t}</th>`).join('');
+
+    const rows = preset.amounts.map(amt => {
+      const cells = targets.map(t => {
+        const v = amt / rates[preset.code] * rates[t];
+        return `<td class="py-1.5 pl-2 text-right font-mono ${REF_COLOUR[t]}">${formatNum(v, t === 'KHR' ? 0 : 2)}</td>`;
+      }).join('');
+      return `
+        <tr class="border-t border-gray-800/60 cursor-pointer hover:bg-gray-700/40"
+            onclick="quickFill('${preset.code}', '${targets[0]}', ${amt})">
+          <td class="py-1.5 font-mono ${REF_COLOUR[preset.code]}">${amt.toLocaleString()}</td>${cells}
+        </tr>`;
+    }).join('');
+
+    return `
+      <div class="bg-gray-800/50 rounded-lg px-3 py-2">
+        <div class="flex items-baseline justify-between mb-1">
+          <span class="text-sm font-semibold ${REF_COLOUR[preset.code]}">${FLAGS[preset.code]} ${preset.code}</span>
+          <span class="text-[11px] text-gray-500">${NAMES[preset.code]}</span>
+        </div>
+        <table class="w-full text-sm">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
 }
 
 // ── Convert ────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const src = [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
 
 const els = {};
-const g = id => els[id] || (els[id] = { value: '', textContent: '', className: '', innerHTML: '', disabled: false, appendChild() {}, addEventListener() {} });
+const g = id => els[id] || (els[id] = { value: '', textContent: '', className: '', innerHTML: '', disabled: false, appendChild() {}, addEventListener() {}, scrollIntoView() {} });
 global.document = { getElementById: g, addEventListener() {}, createElement: () => ({ className: '', innerHTML: '', appendChild() {} }) };
 global.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 global.alert = () => {}; global.confirm = () => true;
@@ -57,6 +57,21 @@ const set = (f, t, a) => { document.getElementById('from-currency').value = f;
   }
   console.log('F) rate cards:', document.getElementById('rate-aud').textContent, '|',
     document.getElementById('rate-usd').textContent, '|', document.getElementById('rate-khr').textContent);
+
+  console.log('G) quick reference');
+  updateRefTable();
+  console.log('  anchor:', document.getElementById('ref-anchor').textContent);
+  const NL = String.fromCharCode(10);
+  const txt = document.getElementById('ref-cards').innerHTML
+    .split('<' + '/tr>').join(NL).split('<' + '/div>').join(NL)
+    .replace(/<[^>]+>/g, ' ').replace(/ +/g, ' ')
+    .split(NL).map(s => s.trim()).filter(Boolean);
+  txt.forEach(line => console.log('   ', line));
+
+  console.log('H) tap-to-fill (KHR 20000 row -> first target)');
+  quickFill('KHR', 'AUD', 20000);
+  console.log('  ', document.getElementById('from-amount').value, 'KHR ->',
+    document.getElementById('to-amount').textContent, 'AUD |', document.getElementById('conversion-detail').textContent);
 })();
 `;
 eval(src + test);

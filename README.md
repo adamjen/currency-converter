@@ -91,6 +91,20 @@ it is idempotent — safe to re-run, including from the error path.
 `fmt()` / `convert()` render `—` rather than `NaN` when a currency has no rate yet (e.g. the
 KHR card before the first fetch resolves).
 
+## Quick Reference (cheat sheet)
+
+Three cards, one per source currency, driven by `REF_PRESETS` — round amounts only: AUD
+10/50/100, USD 5/10/50, and KHR 1k/5k/10k/20k/50k/100k (real Cambodian note denominations).
+The line under the heading is the mental anchor, rounded to the nearest 100 riel:
+
+```
+A$1 ≈ 2,700 riel · US$1 ≈ 4,000 riel · 10,000 riel ≈ A$3.68 / US$2.47
+```
+
+Tapping a row loads that amount into the converter (`quickFill()`). Cheat-sheet cells use 2 dp
+for AUD/USD and 0 dp for KHR — deliberately rougher than the converter box, which uses
+`formatAmount()`. Change the amounts by editing `REF_PRESETS`.
+
 ## Input & events (mobile)
 
 The converter is a `<form id="convert-form">`; submitting it — the soft keyboard's **Go** /

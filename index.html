@@ -61,29 +61,31 @@
     <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
       <h2 class="text-lg font-semibold mb-4">Convert</h2>
 
+      <!-- Wrapped in a form so the mobile keyboard "Go"/Enter commits the amount. -->
+      <form id="convert-form" onsubmit="event.preventDefault(); convert(); document.getElementById('from-amount').blur();">
       <div class="grid grid-cols-[1fr_auto_1fr] gap-3 items-end">
         <!-- From -->
         <div>
           <label class="block text-sm text-gray-400 mb-1">From</label>
-          <select id="from-currency" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+          <select id="from-currency" onchange="convert()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
             <option value="AUD">🇦🇺 AUD — Australian Dollar</option>
             <option value="USD">🇺🇸 USD — US Dollar</option>
             <option value="KHR">🇰🇭 KHR — Cambodian Riel</option>
           </select>
-          <input id="from-amount" type="number" value="1" min="0" step="any"
+          <input id="from-amount" type="number" value="1" min="0" step="any" inputmode="decimal" enterkeyhint="go"
             class="w-full mt-2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-3 text-xl font-mono text-white focus:outline-none focus:border-blue-500"
-            oninput="convert()">
+            oninput="convert()" onchange="convert()" onkeyup="if (event.key === 'Enter') convert()">
         </div>
 
         <!-- Swap button -->
-        <button onclick="swapCurrencies()" class="mb-1 p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition text-gray-400 hover:text-white" title="Swap currencies">
+        <button type="button" onclick="swapCurrencies()" class="mb-1 p-2 rounded-full bg-gray-800 hover:bg-gray-700 transition text-gray-400 hover:text-white" title="Swap currencies">
           ⇄
         </button>
 
         <!-- To -->
         <div>
           <label class="block text-sm text-gray-400 mb-1">To</label>
-          <select id="to-currency" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+          <select id="to-currency" onchange="convert()" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
             <option value="USD">🇺🇸 USD — US Dollar</option>
             <option value="AUD">🇦🇺 AUD — Australian Dollar</option>
             <option value="KHR">🇰🇭 KHR — Cambodian Riel</option>
@@ -94,7 +96,12 @@
         </div>
       </div>
 
+      <button type="submit" class="mt-4 w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition text-white text-sm font-medium">
+        Convert
+      </button>
+
       <div id="conversion-detail" class="mt-3 text-sm text-gray-500 text-center"></div>
+      </form>
     </div>
 
     <!-- Quick Reference Table -->

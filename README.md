@@ -91,6 +91,16 @@ it is idempotent — safe to re-run, including from the error path.
 `fmt()` / `convert()` render `—` rather than `NaN` when a currency has no rate yet (e.g. the
 KHR card before the first fetch resolves).
 
+## Input & events (mobile)
+
+The converter is a `<form id="convert-form">`; submitting it — the soft keyboard's **Go** /
+**Enter** — calls `convert()` and blurs the field to dismiss the keyboard. `convert()` is also
+wired to `input` **and** `change` on the amount field and `change` on both selects, so typing,
+autofill, IME commit and currency switching all update the result on their own. There is an
+explicit **Convert** button for touch use, and `type="number"` + `inputmode="decimal"` +
+`enterkeyhint="go"` give the numeric keypad with a Go key on iOS/Android. Nothing here depends
+on ↻ Refresh — that only re-fetches rates.
+
 ## Rate history
 
 Stored in `localStorage['exchange-rate-history']` as `[{ date, timestamp, rates }]`, newest

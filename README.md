@@ -30,19 +30,45 @@ are fully symmetric — KHR→USD works exactly like USD→KHR.
 ```
 rates.json  ─┐
              ├─→ liveRates ─→ applyOverrides() ─→ rates ─→ updateRatesDisplay()
-live API ────┘                                            updateRefTable()
- (open.er-api.com, AUD base)                              convert()
-                                                          saveRateSnapshot()  [API mode only]
+live API ────┘        ↑                                convert()
+ (open.er-api.com,     └─ localStorage cache           updateRefTable()
+  AUD base)              └─ EMBEDDED_RATES (baked in)  saveRateSnapshot()  [API mode only]
 ```
 
 | Source | Condition | Status dot | Status text |
 |---|---|---|---|
-| `rates.json` | file exists next to `index.html` and parses | blue | `Manual rates.json · <date>` |
-| Live API | no usable `rates.json` | green | `Updated <day>` |
-| Neither | both failed | red | `Error: <message>` (last known rates stay on screen) |
+| `rates.json` | file next to `index.html` parses | blue | `Manual rates.json · <date>` |
+| Live API | no usable `rates.json`, network up | green | `Updated <date>` |
+| localStorage cache | API failed, rates seen online before | amber | `Offline · cached <date>` |
+| `EMBEDDED_RATES` | API failed, nothing cached | amber | `Offline · built-in rates from <date>` |
+| None of the above | API failed and the baked-in set is broken | red | `Error: <message>` |
 
 `refreshRates()` is the single entry point (init + the ↻ button, which calls the
-`fetchRates()` alias). It tries the file first, then the API.
+`fetchRates()` alias): file → API → cache → baked-in. Every successful API fetch is written
+to `localStorage['exchange-rate-cache']`, so the app degrades to the freshest rates it has
+seen instead of showing nothing.
+
+## Offline on your phone
+
+The page needs no server and no network once it has rates — the amber status lines above are
+fully functional, just stale.
+
+1. Re-bake the fallback rates so they are not months old:
+   ```bash
+   node bake-rates.js     # rewrites EMBEDDED_RATES in index.html from the live API
+   ```
+2. Copy `index.html` to the phone (Drive, `scp`, USB — it is one self-contained file).
+3. Open it from the phone's file manager (or Chrome → open file). No internet needed; the
+   status bar reads `Offline · built-in rates from <date>`.
+
+Notes:
+- If you open it from a real URL instead, the browser also caches the last rates it fetched,
+  so later offline opens show `Offline · cached <date>` — fresher than the baked-in set.
+- `localStorage` is per-origin, and `file://` origins are quirky across browsers, so treat the
+  baked-in rates as the guaranteed offline path.
+- A service worker / installable PWA would cache the *page* too, but service workers only
+  register on HTTPS or localhost — `http://192.168.0.x` will not work. Needs hosting.
+- Rates drift. Re-bake and re-copy before a trip; the status line always shows how old they are.
 
 ## Pinning a rate
 
@@ -148,5 +174,6 @@ per scenario — a thrown error exits non-zero, otherwise eyeball the table.
 
 - The free `open.er-api.com` endpoint updates roughly once a day, and its own USD↔KHR cross
   differs ~0.2% from the AUD-based cross the app fetches.
-- No service worker / offline cache — first paint before the fetch resolves shows `—`.
+- No service worker: the **rates** work offline, but the page itself must be cached by the
+  browser or copied onto the device. First paint before any source resolves shows `—`.
 - Tailwind Play CDN is fine for a personal tool, not for production traffic.

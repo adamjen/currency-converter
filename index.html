@@ -207,9 +207,7 @@ async function loadRatesFile() {
   for (const code of CURRENCIES) {
     if (src[code] != null) norm[code] = src[code] / src.AUD;
   }
-  liveRates = norm;
-  ratesDate = data.date || 'rates.json';
-  rateSource = 'rates.json';
+  useRates(norm, data.date || 'rates.json', 'rates.json');
 }
 
 async function fetchApiRates() {
@@ -217,13 +215,45 @@ async function fetchApiRates() {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
 
-  liveRates = {
-    AUD: data.rates.AUD,
-    USD: data.rates.USD,
-    KHR: data.rates.KHR
-  };
-  ratesDate = data.time_last_update_utc;
-  rateSource = 'api';
+  useRates({ AUD: data.rates.AUD, USD: data.rates.USD, KHR: data.rates.KHR },
+    data.time_last_update_utc, 'api');
+}
+
+// ── Offline Rates ──────────────────────────────────────────────────────
+// Baked-in fallback so the page converts with no network at all — e.g. opened
+// straight from the phone's file manager. Refresh the numbers with:
+//   node bake-rates.js
+const EMBEDDED_RATES = { date: '15 Oct 2026', rates: { AUD: 1, USD: 0.69783, KHR: 2837.763158 } };
+const CACHE_KEY = 'exchange-rate-cache';
+
+function useRates(src, date, source) {
+  liveRates = src;
+  ratesDate = date;
+  rateSource = source;
+}
+
+// Every successful live fetch is remembered, so the next offline open uses
+// the freshest rates rather than the baked-in ones.
+function saveCachedRates() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ date: ratesDate, rates: liveRates }));
+  } catch (e) {
+    /* private mode / storage full — offline cache is only a bonus */
+  }
+}
+
+// Last rates seen online, otherwise the baked-in set. True if either worked.
+function restoreStoredRates() {
+  let cached = null;
+  try {
+    const raw = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (raw && raw.rates && raw.rates.AUD) cached = raw;
+  } catch (e) { /* corrupt cache — fall through to the baked-in rates */ }
+
+  const src = cached || EMBEDDED_RATES;
+  if (!src.rates || !src.rates.AUD) return false;
+  useRates(src.rates, src.date, cached ? 'cache' : 'embedded');
+  return true;
 }
 
 // ── Refresh ────────────────────────────────────────────────────────────
@@ -240,16 +270,16 @@ async function refreshRates() {
     try {
       await loadRatesFile();
     } catch (fileErr) {
-      await fetchApiRates();
+      try {
+        await fetchApiRates();
+        saveCachedRates();
+      } catch (apiErr) {
+        // No network: fall back to cached rates, then the baked-in set.
+        if (!restoreStoredRates()) throw apiErr;
+      }
     }
     applyOverrides();
-
-    dot.className = rateSource === 'rates.json'
-      ? 'w-2.5 h-2.5 rounded-full bg-blue-500'
-      : 'w-2.5 h-2.5 rounded-full bg-green-500';
-    status.textContent = (rateSource === 'rates.json'
-      ? `Manual rates.json · ${ratesDate}`
-      : `Updated ${String(ratesDate).split(' ')[0]}`) + pinnedNote();
+    renderStatus();
 
     updateRatesDisplay();
     updateRefTable();
@@ -266,6 +296,22 @@ async function refreshRates() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// Status bar wording + dot colour per rate source.
+function renderStatus() {
+  const dot = document.getElementById('live-dot');
+  const status = document.getElementById('rates-status');
+  const day = String(ratesDate).split(' ').slice(0, 3).join(' ');
+  const map = {
+    'rates.json': ['bg-blue-500',  `Manual rates.json · ${ratesDate}`],
+    'api':        ['bg-green-500', `Updated ${day}`],
+    'cache':      ['bg-amber-500', `Offline · cached ${day}`],
+    'embedded':   ['bg-amber-500', `Offline · built-in rates from ${ratesDate}`]
+  };
+  const pick = map[rateSource] || ['bg-gray-500', 'No rates available'];
+  dot.className = `w-2.5 h-2.5 rounded-full ${pick[0]}`;
+  status.textContent = pick[1] + pinnedNote();
 }
 
 // Kept for the Refresh button's inline onclick.

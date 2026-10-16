@@ -1,23 +1,52 @@
 # Exchange Rate Converter (AUD · USD · KHR)
 
-Single-file browser app — `index.html` holds the markup, styles and logic. No build step; the
-Tailwind runtime is vendored at `vendor/tailwind.js` so nothing is fetched from a CDN.
+A browser app that converts money between AUD (Australian dollar), USD (US dollar), and
+KHR (Cambodian riel). `index.html` holds the markup, the styles, and the logic. There is no
+build step. The Tailwind runtime is vendored at `vendor/tailwind.js`, so the page loads
+nothing from a CDN.
 
-Rates are **hardcoded by default** (`RATE_OVERRIDES`), so the page works with no network at
-all. A **⬇ Latest** button pulls fresh rates from the API when you feel like it.
+The app uses **hardcoded rates by default** (`RATE_OVERRIDES`). It needs no network. The
+**⬇ Latest** button brings in fresh rates from the API (application programming interface)
+when you want them.
 
-## Deployed — GitHub Pages
+## Deployed site
 
-**https://adamjen.github.io/currency-converter/** (public repo, Pages from `main` / root).
+**https://adamjen.github.io/currency-converter/** — public repo, GitHub Pages, branch `main`,
+path `/`.
 
-On the phone: open the URL in Chrome → ⋮ → **Add to home screen** (iOS: Share → Add to Home
-Screen). `sw.js` precaches the shell, so after that first online open it launches in airplane
-mode. Service workers need HTTPS, which is exactly what Pages provides — the LAN IP and
-`file://` cannot register one.
+### Install on a phone
 
-**Redeploy:** `git push origin main`. Then bump `VERSION` in `sw.js` (`v1` → `v2`) and push
-again — otherwise installed copies keep serving the cached shell. Pages takes ~30 s to build;
-`gh api repos/adamjen/currency-converter/pages --jq .status` says `built`.
+A service worker needs HTTPS. GitHub Pages provides it. A LAN address and `file://` do not, so
+neither can install the app.
+
+**Android (Chrome):**
+
+1. Open the URL in Chrome.
+2. Press **⋮** (the three-dot menu).
+3. Press **Add to home screen**.
+4. Open the icon once while you have signal.
+
+**iPhone (Safari):**
+
+1. Open the URL in Safari.
+2. Press **Share**.
+3. Press **Add to Home Screen**.
+4. Open the icon once while you have signal.
+
+`sw.js` stores the app shell in the browser cache. After step 4 the app opens with no network
+at all. Other browsers on iPhone use the same engine as Safari, so Safari is the normal choice.
+
+### Redeploy
+
+1. Run `git push origin main`.
+2. Change `VERSION` in `sw.js` (`v3` → `v4`) and push again.
+
+Step 2 is necessary. If you skip it, an installed copy keeps the old shell from its cache.
+Pages needs about 30 seconds to build. Check it with:
+
+```bash
+gh api repos/adamjen/currency-converter/pages --jq .status   # → built
+```
 
 ## Run it locally
 
@@ -26,25 +55,34 @@ python3 -m http.server 8090 -d /home/adam/projects/currency-converter
 # → http://localhost:8090
 ```
 
-Serve it locally over HTTP rather than opening `index.html` from disk: under `file://` the
-browser blocks `fetch()`, so the ⬇ Latest download and `rates.json` both fail.
+Serve the files over HTTP. Do not open `index.html` from disk. Under `file://` the browser
+blocks `fetch()`, so the **⬇ Latest** download and `rates.json` both fail.
 
-## The one convention everything depends on
+## Rate convention
 
-`rates` is always **"what 1 AUD is worth in `<currency>`"**:
+The `rates` object always answers one question: **"What is 1 AUD worth in `<currency>`?"**
 
 ```js
 rates = { AUD: 1, USD: 0.6722, KHR: 2733.5374 }   // 1 AUD = 0.6722 USD = 2733.54 KHR
 ```
 
-Any conversion is `amount / rates[from] * rates[to]` (`convert()`), so the three currencies
-are fully symmetric — KHR→USD works exactly like USD→KHR.
+`convert()` uses one formula for every pair:
+
+```js
+amountInAud = amount / rates[from];
+result      = amountInAud * rates[to];
+```
+
+The three currencies are symmetric. KHR→USD works exactly like USD→KHR.
 
 ## Rate pipeline
 
-`allPinned()` picks the mode. All three currencies have a number → **hardcoded mode**: the
-page never touches the network unless you tap ⬇ Latest. Any `null` in `RATE_OVERRIDES` →
-**live mode**, which tries each source in order and degrades instead of failing:
+`allPinned()` selects the mode:
+
+- Every currency has a number in `RATE_OVERRIDES` → **hardcoded mode**. The page uses no
+  network unless you press **⬇ Latest**.
+- Any value is `null` → **live mode**. The app tries each source in order and falls back
+  instead of failing.
 
 ```
 hardcoded mode:  RATE_OVERRIDES ─┐
@@ -56,137 +94,160 @@ live mode:  rates.json → API → localStorage cache → EMBEDDED_RATES
 | Source | Condition | Status dot | Status text |
 |---|---|---|---|
 | `RATE_OVERRIDES` | all pinned, nothing downloaded | blue | `Hardcoded rates · as of <date>` |
-| downloaded set | all pinned, after ⬇ Latest (saved) | amber | `Downloaded rates · <date>` |
+| downloaded set | all pinned, after **⬇ Latest** (saved) | amber | `Downloaded rates · <date>` |
 | `rates.json` | live mode, file next to `index.html` parses | blue | `Manual rates.json · <date>` |
-| Live API | live mode, network up | green | `Updated <date>` |
-| localStorage cache | live mode, API failed, rates seen online before | amber | `Offline · cached <date>` |
+| Live API | live mode, network available | green | `Updated <date>` |
+| localStorage cache | live mode, API failed, rates seen before | amber | `Offline · cached <date>` |
 | `EMBEDDED_RATES` | live mode, API failed, nothing cached | amber | `Offline · built-in rates from <date>` |
-| None of the above | API failed and the baked-in set is broken | red | `Error: <message>` |
+| None | API failed and the baked-in set is broken | red | `Error: <message>` |
 
-`refreshRates()` is the single entry point (init + the ↻ button, which calls the
-`fetchRates()` alias). Every successful API fetch is written to
-`localStorage['exchange-rate-cache']`, so the app falls back to the freshest rates it has seen
-instead of showing nothing. The subtitle under the title always names the active set: *fixed
-rates* / *downloaded rates* / *live rates*.
+`refreshRates()` is the only entry point. It runs at start-up and when you press ↻ Refresh
+(the button calls the `fetchRates()` alias). Every successful API fetch is written to
+`localStorage['exchange-rate-cache']`. If a later fetch fails, the app shows the newest rates
+it has already seen. The subtitle under the title always names the active set: *fixed rates*,
+*downloaded rates*, or *live rates*.
 
-## Hardcoded rates — and downloading fresh ones
+## Hardcoded rates
 
 ```js
 const RATE_OVERRIDES = { AUD: 1, USD: 0.6722, KHR: 2733.5374 };
 const RATES_AS_OF = '15 Oct 2026';
 ```
 
-USD is pinned at 0.6722 by request; KHR is pinned so `1 USD = 4,066.55 KHR`, the market cross
-on that date (`2837.763158 × 0.6722 / 0.69783`). In this mode `applyOverrides()` is a no-op —
-the source *is* the pinned set.
+USD is pinned at 0.6722 by request. KHR is pinned so that `1 USD = 4,066.55 KHR`, which is the
+market cross rate on that date (`2837.763158 × 0.6722 / 0.69783`). In this mode
+`applyOverrides()` changes nothing, because the source is already the pinned set.
 
-- **⬇ Latest** (shown in this mode only) fetches the API, applies it immediately, and saves it
-  to `localStorage`, so every later open — online or not — reuses it. That button is the only
-  thing that uses the network.
-- **↺ Hardcoded** (shown once a download is saved) throws the download away and goes back to
-  the numbers in the file.
-- To make one currency live again, set it to `null` — the live chain comes back on and the
-  remaining pins are applied on top (see *Pinning a rate*).
-- To move the hardcoded set itself: `node bake-rates.js --hardcode` (keeps the USD pin, re-derives
-  KHR from the market cross, updates `RATES_AS_OF`).
+### ⬇ Latest
 
-## Offline
+This button appears only in hardcoded mode. It is the only control that uses the network.
 
-Three layers, best first:
+1. It fetches the API.
+2. It applies the result immediately.
+3. It saves the result to `localStorage`.
 
-1. **Pages + service worker** (recommended). Open the URL once, add to home screen, and the
-   shell — including `vendor/tailwind.js` — is cached. Rates are hardcoded, so nothing else is
-   needed. Tapping ⬇ Latest with signal refreshes them and the response is cached too.
-2. **Copy the files.** `index.html` alone converts fine but renders unstyled offline; copy
-   `index.html` + `vendor/` + `icons/` + `manifest.webmanifest` + `sw.js` to get the same look.
-   On Android, Chrome opens it from the Files app; iOS gives a `file://` page no `localStorage`,
-   so history and downloads will not persist there — use Pages on iOS.
-3. **`EMBEDDED_RATES`** is the last-resort set inside the script, used only in live mode when
-   every source failed. Refresh with `node bake-rates.js`.
+Every later open reuses the saved set, online or offline.
 
-Hardcoded rates never refresh themselves — the status line always says how old they are.
+### ↺ Hardcoded
+
+This button appears after you save a download. It deletes the saved set and returns to the
+numbers in the file.
+
+### Other changes
+
+- To make one currency live again, set it to `null`. Live mode starts again, and the remaining
+  pins apply on top of it. See *Pinning a rate*.
+- To move the hardcoded set itself, run `node bake-rates.js --hardcode`. It keeps the USD pin,
+  re-derives KHR from the market cross rate, and updates `RATES_AS_OF`.
+
+## Offline options
+
+Three options, best first:
+
+1. **Pages + service worker.** Open the URL once, add the app to your home screen, and the
+   browser caches the shell, including `vendor/tailwind.js`. Rates are hardcoded, so nothing
+   else is needed. Press **⬇ Latest** with signal to refresh them.
+2. **Copy the files.** `index.html` alone converts correctly but shows no styling offline. Copy
+   `index.html`, `vendor/`, `icons/`, `manifest.webmanifest`, and `sw.js` to keep the same look.
+   Chrome on Android opens the copy from the Files app. On iOS, a `file://` page has no access
+   to `localStorage`, so history and downloads do not persist there. Use Pages on iOS.
+3. **`EMBEDDED_RATES`.** This is the last-resort set inside the script. Live mode uses it only
+   when every other source fails. Refresh it with `node bake-rates.js`.
 
 ## Pinning a rate (live mode)
 
-With a `null` in `RATE_OVERRIDES` the app is in live mode, and a pinned currency makes
-`applyOverrides()` **rescale the other live currencies by the same ratio** before pinning:
+In live mode, a pinned currency makes `applyOverrides()` rescale the other live currencies by
+the same ratio before it pins the value:
 
 ```
 scale = pinned / live            // 0.6722 / 0.69783 = 0.96327
 rates.KHR = live.KHR * scale     // 2837.76 → 2733.54
 ```
 
-That keeps cross rates honest: 1 USD = 2733.54 / 0.6722 = **4,066.55 KHR** (market), instead of
-2837.76 / 0.6722 = 4,190.35 (+3.0% drift) which is what you get if you pin one rate and leave
-the rest untouched. `applyOverrides()` rebuilds `rates` from `liveRates` every call, so it is
-idempotent — safe to re-run, including from the error path.
+This keeps cross rates correct. `1 USD = 2733.54 / 0.6722 = 4,066.55 KHR`, which matches the
+market. If you pin one rate and leave the rest alone, you get `2837.76 / 0.6722 = 4,190.35` —
+a 3.0% error. `applyOverrides()` rebuilds `rates` from `liveRates` on every call, so it is
+idempotent. It is safe to run twice, including from the error path.
 
-## rates.json (fixed rates without touching code)
+## rates.json
+
+This file gives you fixed rates without a code change. Copy `rates.json.example`. Git ignores
+`rates.json` because it is machine-local state.
 
 ```json
 { "date": "2026-10-14", "base": "USD",
   "rates": { "AUD": 1.4877, "USD": 1, "KHR": 4056.37 } }
 ```
 
-- `base` is the currency 1 unit is quoted in — any of AUD/USD/KHR. Values are normalised to
-  the AUD convention by dividing through the `AUD` entry, so a USD-based file is fine.
-- `rates` may be omitted (values at top level); `date` is display-only.
+- `base` names the currency that 1 unit is quoted in. It can be AUD, USD, or KHR.
+- The app divides every value by the `AUD` entry, so a USD-based file is correct.
+- You may put the rates at the top level and omit `rates`.
+- `date` is for display only.
 - `RATE_OVERRIDES` still applies on top of the file.
-- Copy from `rates.json.example`. It is git-ignored — it is machine-local state.
-- History snapshots are **not** written in `rates.json` mode (manual numbers shouldn't
-  pollute the rate history).
+- The app does not write history snapshots in `rates.json` mode. Manual numbers stay out of the
+  rate history.
 
 ## Number formatting
 
-`formatAmount(n, currency, isRate)`:
-- `|n| < 1` → 6 significant digits, so `1 KHR → USD` shows `0.000247124` instead of rounding
-  to `0.0002`
-- KHR → 0 dp for amounts, 2 dp for rate lines
-- otherwise **2 dp for amounts** (cents), 4 dp for rate lines — `10.00`, not `10.0000`, while
-  `1 USD = 1.4877 AUD` keeps its precision
+`formatAmount(n, currency, isRate)` — dp means decimal places:
 
-`fmt()` / `convert()` render `—` rather than `NaN` when a currency has no rate yet (e.g. the
-KHR card before the first fetch resolves).
+| Value | Amount box | Rate line |
+|---|---|---|
+| below 1 | 6 significant digits (`0.000247124`) | 6 significant digits |
+| KHR | 0 dp (whole riel) | 2 dp |
+| AUD, USD | 2 dp (`10.00`, not `10.0000`) | 4 dp (`1 USD = 1.4877 AUD`) |
 
-## Quick Reference (cheat sheet)
+The 6-significant-digit rule prevents `1 KHR → USD` from rounding to `0.0002`.
 
-Three cards, one per source currency, driven by `REF_PRESETS` — round amounts only: AUD
-10/50/100, USD 5/10/50, and KHR 10k/20k/50k (real Cambodian note denominations). Three rows
-each so the cards line up.
+`fmt()` and `convert()` show `—` instead of `NaN` when a currency has no rate yet. This happens
+to the KHR card before the first fetch finishes.
 
-The line under the heading is the mental anchor, rounded to the nearest 100 riel:
+## Quick Reference cards
+
+Three cards, one per source currency, driven by `REF_PRESETS`. Amounts are round numbers only:
+AUD 10/50/100, USD 5/10/50, and KHR 10000/20000/50000. Those KHR values are real Cambodian note
+denominations. Each card has three rows, so the cards line up.
+
+The line under the heading gives the mental anchor, rounded to the nearest 100 riel:
 
 ```
 A$1 ≈ 2,700 riel · US$1 ≈ 4,100 riel · 10,000 riel ≈ A$3.66 / US$2.46
 ```
 
-Tapping a row loads that amount into the converter (`quickFill()`). Cheat-sheet cells use 2 dp
-for AUD/USD and 0 dp for KHR — deliberately rougher than the converter box, which uses
+Press a row to put that amount into the converter (`quickFill()`). The cards use 2 dp for AUD
+and USD, and 0 dp for KHR. They are deliberately rougher than the converter box, which uses
 `formatAmount()`.
 
-## Input & events (mobile)
+## Input and events on mobile
 
-The converter is a `<form id="convert-form">`; submitting it — the soft keyboard's **Go** /
-**Enter** — calls `convert()` and blurs the field to dismiss the keyboard. `convert()` is also
-wired to `input` **and** `change` on the amount field and `change` on both selects, so typing,
-autofill, IME commit and currency switching all update the result on their own. There is an
-explicit **Convert** button for touch use, and `type="number"` + `inputmode="decimal"` +
-`enterkeyhint="go"` give the numeric keypad with a Go key on iOS/Android. Nothing here depends
-on ↻ Refresh — that only re-fetches rates.
+The converter is a `<form id="convert-form">`. Submitting it — the **Go** or **Enter** key on a
+soft keyboard — calls `convert()` and removes focus from the field, which closes the keyboard.
+`convert()` also runs on `input` and `change` on the amount field, and on `change` on both
+selects. Typing, autofill, IME (input method editor) commit, and a currency change each update
+the result on their own. A **Convert** button is there for touch use. `type="number"`,
+`inputmode="decimal"`, and `enterkeyhint="go"` give a numeric keypad with a Go key on iOS and
+Android. None of this depends on ↻ Refresh; that button only fetches rates.
 
-The ⇄ **Swap** button swaps the two currencies *and* carries the amount across: 10 AUD → 6.72
-USD becomes 6.72 USD → 10 AUD, not 6.7200 AUD. It reuses the rounding the result box showed
-(`roundForDisplay()` — whole riel for KHR, 2 dp otherwise), so the number you swap is the number
-you saw, and swapping twice gets you back to the same figure (10 AUD → 27,335 KHR → swap →
-27,335 KHR → 10.00 AUD). An empty amount stays empty.
+### Swap button
+
+The ⇄ **Swap** button exchanges the two currencies and moves the result into the amount box.
+For example, 10 AUD gives 6.72 USD. After you press Swap, the amount box shows 6.72 and the
+currencies reverse. An empty amount box stays empty.
+
+The button reuses the rounding of the result box (`roundForDisplay()`: whole riel for KHR,
+2 dp otherwise). The number you swap is the number you saw. Swap twice and the app shows the
+original amount: 10 AUD → 27,335 KHR → Swap → 27,335 KHR → 10.00 AUD.
 
 ## Rate history
 
-Stored in `localStorage['exchange-rate-history']` as `[{ date, timestamp, rates }]`, newest
-first, capped at 90 entries, deduped by `date`. Written on each successful live-API refresh
-(including a ⬇ Latest download). Export/Import buttons move that **history** array as JSON —
-importing does *not* change the active rates; only ⬇ Latest, `rates.json` or `RATE_OVERRIDES`
-do that. Clear wipes localStorage after a confirm.
+The app stores history in `localStorage['exchange-rate-history']` as
+`[{ date, timestamp, rates }]`. Newest first, maximum 90 entries, one entry per `date`. A
+successful live-API refresh writes an entry, including a **⬇ Latest** download. The list shows
+the newest 20.
+
+- **Export** / **Import** move that history array as JSON. Import does not change the active
+  rates. Only **⬇ Latest**, `rates.json`, or `RATE_OVERRIDES` change them.
+- **Clear** deletes `localStorage` after a confirm dialog.
 
 ## Tests
 
@@ -194,13 +255,20 @@ do that. Clear wipes localStorage after a confirm.
 node tests/harness.js
 ```
 
-Headless: extracts the inline `<script>` straight out of `index.html` (so it can't drift),
-stubs `document` / `localStorage` / `fetch`, and prints one line per scenario: hardcoded mode
-(asserting **zero** fetch calls), ⬇ Latest download → saved → reused offline → ↺ Hardcoded,
-then live mode (`RATE_OVERRIDES.KHR = null`) through the API, `rates.json` (base USD), the
-offline cache and the baked-in fallback, plus `applyOverrides()` idempotency, small-value
-formatting, history import, and the rendered cheat cards. A thrown error exits non-zero;
-otherwise eyeball the table.
+The harness extracts the inline `<script>` straight out of `index.html`, so it cannot drift
+from the app. It stubs `document`, `localStorage`, and `fetch`, then prints one line per
+scenario, A to M:
+
+- A–D: hardcoded mode with zero fetch calls, then **⬇ Latest** download, offline reuse of the
+  saved set, and ↺ Hardcoded.
+- E–H: live mode (`RATE_OVERRIDES.KHR = null`) — API with the USD pin and the KHR rescale,
+  `rates.json` (base USD) over the API, offline with a cache, and offline with the baked-in set.
+- I: small-value formatting, including the `1 KHR → USD` case.
+- J: history import must not change the active rates.
+- K–L: the Quick Reference cards and a card tap.
+- M: Swap — AUD/USD round trip, KHR rounding, and an empty amount.
+
+A thrown error exits non-zero. Otherwise check the printed table against the values above.
 
 ## Files
 
@@ -219,20 +287,20 @@ rates.json.example      optional fixed-rate file
 
 ## Adding a currency
 
-1. `CURRENCIES`, `FLAGS`, `NAMES` near the top of the script
-2. `<option>` in both the From and To selects
-3. a card in `#rates-display` + `updateRatesDisplay()` if it needs a headline rate
-4. `RATE_OVERRIDES` — give it a number to stay offline, or `null` to keep it live
+1. Add the code to `CURRENCIES`, `FLAGS`, and `NAMES` near the top of the script.
+2. Add an `<option>` to both the From and the To selects.
+3. Add a card to `#rates-display` and to `updateRatesDisplay()` if it needs a headline rate.
+4. Add it to `RATE_OVERRIDES`. Give it a number to stay offline, or `null` to keep it live.
 
 ## Known limits
 
-- Hardcoded rates never refresh themselves — the numbers are as of `RATES_AS_OF` until you tap
-  ⬇ Latest or re-run `bake-rates.js --hardcode`.
-- The service worker serves the cached shell cache-first, so an installed copy shows the old
-  app until `sw.js` `VERSION` is bumped and Pages rebuilds.
-- Same-origin cache-first also means a hand-edited `rates.json` on a hosted site is only picked
-  up after a `VERSION` bump (the app ignores `rates.json` entirely in hardcoded mode).
-- The free `open.er-api.com` endpoint updates roughly once a day, and its own USD↔KHR cross
-  differs ~0.2% from the AUD-based cross the app fetches.
-- Tailwind Play runtime (vendored) compiles classes in the browser — fine for a personal tool,
-  not for production traffic.
+- Hardcoded rates do not refresh themselves. They stay at `RATES_AS_OF` until you press
+  **⬇ Latest** or run `node bake-rates.js --hardcode`.
+- The service worker serves the shell from the cache first. An installed copy shows the old app
+  until you bump `VERSION` in `sw.js` and Pages rebuilds.
+- Cache-first also means a hand-edited `rates.json` on a hosted site appears only after a
+  `VERSION` bump. In hardcoded mode the app ignores `rates.json` completely.
+- The free `open.er-api.com` endpoint updates about once a day. Its own USD↔KHR cross rate
+  differs from the AUD-based cross rate the app fetches by about 0.2%.
+- The vendored Tailwind Play runtime compiles class names in the browser. Acceptable for a
+  personal tool. Do not use it for production traffic.

@@ -24,7 +24,7 @@
       <h1 class="text-3xl font-bold bg-gradient-to-r from-yellow-400 via-blue-400 to-green-400 bg-clip-text text-transparent">
         Exchange Rate Converter
       </h1>
-      <p class="text-gray-400 mt-1">AUD · USD · KHR — Real-time rates</p>
+      <p class="text-gray-400 mt-1">AUD · USD · KHR — <span id="rates-mode">fixed rates</span></p>
     </header>
 
     <!-- Live Rates Bar -->
@@ -34,9 +34,19 @@
           <span id="live-dot" class="w-2.5 h-2.5 rounded-full bg-gray-600"></span>
           <span id="rates-status" class="text-sm text-gray-400">Loading rates...</span>
         </div>
-        <button id="refresh-btn" onclick="fetchRates()" class="text-sm text-blue-400 hover:text-blue-300 transition px-3 py-1 rounded-lg hover:bg-gray-800">
-          ↻ Refresh
-        </button>
+        <div class="flex items-center gap-1">
+          <button id="update-btn" onclick="updateRatesFromApi()" title="Download the latest rates — the only thing that uses the network in this mode"
+            class="hidden text-sm text-green-400 hover:text-green-300 transition px-3 py-1 rounded-lg hover:bg-gray-800">
+            ⬇ Latest
+          </button>
+          <button id="reset-btn" onclick="resetToHardcoded()" title="Discard the downloaded rates and use the hardcoded ones"
+            class="hidden text-sm text-gray-400 hover:text-gray-300 transition px-3 py-1 rounded-lg hover:bg-gray-800">
+            ↺ Hardcoded
+          </button>
+          <button id="refresh-btn" onclick="fetchRates()" class="text-sm text-blue-400 hover:text-blue-300 transition px-3 py-1 rounded-lg hover:bg-gray-800">
+            ↻ Refresh
+          </button>
+        </div>
       </div>
       <div id="rates-display" class="grid grid-cols-3 gap-3 mt-3 text-center">
         <div class="bg-gray-800 rounded-lg p-3">
@@ -149,12 +159,16 @@ const CURRENCIES = ['AUD', 'USD', 'KHR'];
 const FLAGS = { AUD: '🇦🇺', USD: '🇺🇸', KHR: '🇰🇭' };
 const NAMES = { AUD: 'Australian Dollar', USD: 'US Dollar', KHR: 'Cambodian Riel' };
 
-// ── Manual Rate Overrides ──────────────────────────────────────────────
-// Rates are stored as "what 1 AUD is worth in <currency>".
-// Set a code to null to use the live rate for that currency.
-// A pinned currency rescales the other live currencies by the same ratio,
-// so cross rates (USD per KHR etc.) stay at market instead of drifting.
-const RATE_OVERRIDES = { AUD: 1, USD: 0.6722, KHR: null };
+// ── Hardcoded Rates ────────────────────────────────────────────────────
+// What 1 AUD is worth in <currency>. With all three set the page is fully
+// offline — it never touches the network unless you tap "⬇ Latest".
+// Set one to null to make that currency live again (API fetch comes back on).
+// USD is pinned at 0.6722 by request; KHR is pinned so 1 USD = 4,066.55 riel,
+// the market cross on the date below.
+const RATE_OVERRIDES = { AUD: 1, USD: 0.6722, KHR: 2733.5374 };
+const RATES_AS_OF = '15 Oct 2026';
+
+function allPinned() { return CURRENCIES.every(c => RATE_OVERRIDES[c] != null); }
 
 let liveRates = {};   // raw source rates, e.g. { AUD: 1, USD: 0.69793, KHR: 2824.21 }
 let rates = {};       // liveRates with RATE_OVERRIDES applied
@@ -164,6 +178,9 @@ let history = [];     // [{ date, rates, timestamp }]
 
 function applyOverrides() {
   rates = { ...liveRates };
+  // Fully hardcoded mode: the source is already the pinned set (or rates the
+  // user downloaded on purpose), so there is nothing to override.
+  if (allPinned()) return;
   const pinnedUsd = RATE_OVERRIDES.USD;
   if (pinnedUsd != null && rates.USD) {
     const scale = pinnedUsd / rates.USD;
@@ -178,6 +195,7 @@ function applyOverrides() {
 }
 
 function pinnedNote() {
+  if (allPinned()) return '';   // everything is pinned — nothing worth flagging
   const parts = Object.keys(RATE_OVERRIDES)
     .filter(c => RATE_OVERRIDES[c] != null && c !== 'AUD')
     .map(c => `1 AUD = ${RATE_OVERRIDES[c]} ${c}`);
@@ -201,11 +219,18 @@ async function loadRatesFile() {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   const src = data.rates || data;
-  if (!src || !src.AUD) throw new Error('rates.json needs an AUD rate');
+  const base = data.base || 'AUD';
+  if (!src || (src.AUD == null && src[base] == null)) {
+    throw new Error('rates.json needs an AUD rate, or its base currency');
+  }
 
+  // Values are "per 1 <base>"; convert to "per 1 AUD" by dividing through AUD.
+  const perBase = (code) => (code === base ? 1 : src[code]);
+  const audPerBase = perBase('AUD');
   const norm = {};
   for (const code of CURRENCIES) {
-    if (src[code] != null) norm[code] = src[code] / src.AUD;
+    const v = perBase(code);
+    if (v != null && audPerBase) norm[code] = v / audPerBase;
   }
   useRates(norm, data.date || 'rates.json', 'rates.json');
 }
@@ -242,17 +267,23 @@ function saveCachedRates() {
   }
 }
 
-// Last rates seen online, otherwise the baked-in set. True if either worked.
-function restoreStoredRates() {
-  let cached = null;
+// Rates saved by "⬇ Latest" (or the last successful live fetch).
+function restoreCachedRates() {
   try {
     const raw = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-    if (raw && raw.rates && raw.rates.AUD) cached = raw;
-  } catch (e) { /* corrupt cache — fall through to the baked-in rates */ }
+    if (raw && raw.rates && CURRENCIES.every(c => raw.rates[c])) {
+      useRates(raw.rates, raw.date, 'cache');
+      return true;
+    }
+  } catch (e) { /* corrupt cache — ignore */ }
+  return false;
+}
 
-  const src = cached || EMBEDDED_RATES;
-  if (!src.rates || !src.rates.AUD) return false;
-  useRates(src.rates, src.date, cached ? 'cache' : 'embedded');
+// Cached rates, otherwise the baked-in set. True if either worked.
+function restoreStoredRates() {
+  if (restoreCachedRates()) return true;
+  if (!EMBEDDED_RATES.rates || !EMBEDDED_RATES.rates.AUD) return false;
+  useRates(EMBEDDED_RATES.rates, EMBEDDED_RATES.date, 'embedded');
   return true;
 }
 
@@ -267,15 +298,20 @@ async function refreshRates() {
   btn.disabled = true;
 
   try {
-    try {
-      await loadRatesFile();
-    } catch (fileErr) {
+    if (allPinned()) {
+      // Hardcoded mode: no network. Use downloaded rates if they were saved.
+      if (!restoreCachedRates()) useRates({ ...RATE_OVERRIDES }, RATES_AS_OF, 'hardcoded');
+    } else {
       try {
-        await fetchApiRates();
-        saveCachedRates();
-      } catch (apiErr) {
-        // No network: fall back to cached rates, then the baked-in set.
-        if (!restoreStoredRates()) throw apiErr;
+        await loadRatesFile();
+      } catch (fileErr) {
+        try {
+          await fetchApiRates();
+          saveCachedRates();
+        } catch (apiErr) {
+          // No network: fall back to cached rates, then the baked-in set.
+          if (!restoreStoredRates()) throw apiErr;
+        }
       }
     }
     applyOverrides();
@@ -298,20 +334,65 @@ async function refreshRates() {
   }
 }
 
-// Status bar wording + dot colour per rate source.
+// Status bar wording + dot colour per rate source, and which buttons fit.
 function renderStatus() {
   const dot = document.getElementById('live-dot');
   const status = document.getElementById('rates-status');
   const day = String(ratesDate).split(' ').slice(0, 3).join(' ');
+  const pinned = allPinned();
+
   const map = {
     'rates.json': ['bg-blue-500',  `Manual rates.json · ${ratesDate}`],
     'api':        ['bg-green-500', `Updated ${day}`],
-    'cache':      ['bg-amber-500', `Offline · cached ${day}`],
-    'embedded':   ['bg-amber-500', `Offline · built-in rates from ${ratesDate}`]
+    'cache':      ['bg-amber-500', pinned ? `Downloaded rates · ${day}` : `Offline · cached ${day}`],
+    'embedded':   ['bg-amber-500', `Offline · built-in rates from ${ratesDate}`],
+    'hardcoded':  ['bg-blue-500',  `Hardcoded rates · as of ${ratesDate}`]
   };
   const pick = map[rateSource] || ['bg-gray-500', 'No rates available'];
   dot.className = `w-2.5 h-2.5 rounded-full ${pick[0]}`;
   status.textContent = pick[1] + pinnedNote();
+
+  const mode = document.getElementById('rates-mode');
+  if (mode) {
+    mode.textContent = !pinned ? 'live rates'
+      : rateSource === 'cache' ? 'downloaded rates' : 'fixed rates';
+  }
+  const upd = document.getElementById('update-btn');
+  if (upd) upd.classList.toggle('hidden', !pinned);
+  const rst = document.getElementById('reset-btn');
+  if (rst) rst.classList.toggle('hidden', !(pinned && rateSource === 'cache'));
+}
+
+// ── Manual Rate Download ───────────────────────────────────────────────
+// "⬇ Latest" is the only thing that reaches the network in hardcoded mode.
+// The result is saved, so every later offline open reuses it.
+async function updateRatesFromApi() {
+  const btn = document.getElementById('update-btn');
+  const status = document.getElementById('rates-status');
+  btn.disabled = true;
+  status.textContent = 'Downloading latest rates...';
+  try {
+    await fetchApiRates();
+    saveCachedRates();
+    rateSource = 'cache';   // label it as downloaded, same as later reloads
+    applyOverrides();
+    renderStatus();
+    updateRatesDisplay();
+    updateRefTable();
+    convert();
+    saveRateSnapshot();
+  } catch (err) {
+    status.textContent = `Download failed: ${err.message}`;
+    console.error('Rate download failed:', err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Throw away the downloaded rates and go back to the hardcoded set.
+function resetToHardcoded() {
+  try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* nothing to clear */ }
+  refreshRates();
 }
 
 // Kept for the Refresh button's inline onclick.
@@ -434,7 +515,7 @@ function swapCurrencies() {
 // ── Rate History (localStorage + JSON) ─────────────────────────────────
 function saveRateSnapshot() {
   const snapshot = {
-    date: ratesDate,
+    date: ratesDate || new Date().toISOString().slice(0, 10),
     timestamp: Date.now(),
     rates: { ...rates }
   };
@@ -474,7 +555,7 @@ function renderHistory() {
     const audKhr = entry.rates.KHR / entry.rates.AUD;
     return `
       <div class="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 text-sm fade-in">
-        <span class="text-gray-400">${entry.date.split(' ')[0]}</span>
+        <span class="text-gray-400">${String(entry.date || 'unknown').split(' ')[0]}</span>
         <span class="font-mono text-green-400">1 AUD = ${formatNum(audUsd)} USD</span>
         <span class="font-mono text-yellow-400">= ${formatNum(audKhr, 0)} KHR</span>
       </div>

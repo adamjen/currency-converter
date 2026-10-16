@@ -3,6 +3,9 @@
 Single-file browser app — `index.html` holds the markup, styles and logic. No build step,
 no dependencies beyond two CDNs (Tailwind Play CDN + Google Fonts).
 
+Rates are **hardcoded by default** (`RATE_OVERRIDES`), so the page works with no network at
+all. A **⬇ Latest** button pulls fresh rates from the API when you feel like it.
+
 ## Run it
 
 ```bash
@@ -19,7 +22,7 @@ some browsers also block the API call.
 `rates` is always **"what 1 AUD is worth in `<currency>`"**:
 
 ```js
-rates = { AUD: 1, USD: 0.6722, KHR: 2720.09 }   // 1 AUD = 0.6722 USD = 2720.09 KHR
+rates = { AUD: 1, USD: 0.6722, KHR: 2733.5374 }   // 1 AUD = 0.6722 USD = 2733.54 KHR
 ```
 
 Any conversion is `amount / rates[from] * rates[to]` (`convert()`), so the three currencies
@@ -27,69 +30,86 @@ are fully symmetric — KHR→USD works exactly like USD→KHR.
 
 ## Rate pipeline
 
+`allPinned()` picks the mode. All three currencies have a number → **hardcoded mode**: the
+page never touches the network unless you tap ⬇ Latest. Any `null` in `RATE_OVERRIDES` →
+**live mode**, which tries each source in order and degrades instead of failing:
+
 ```
-rates.json  ─┐
-             ├─→ liveRates ─→ applyOverrides() ─→ rates ─→ updateRatesDisplay()
-live API ────┘        ↑                                convert()
- (open.er-api.com,     └─ localStorage cache           updateRefTable()
-  AUD base)              └─ EMBEDDED_RATES (baked in)  saveRateSnapshot()  [API mode only]
+hardcoded mode:  RATE_OVERRIDES ─┐
+                                 ├─→ liveRates ─→ applyOverrides() ─→ rates ─→ display/convert
+downloaded set:  localStorage ───┘        ↑
+live mode:  rates.json → API → localStorage cache → EMBEDDED_RATES
 ```
 
 | Source | Condition | Status dot | Status text |
 |---|---|---|---|
-| `rates.json` | file next to `index.html` parses | blue | `Manual rates.json · <date>` |
-| Live API | no usable `rates.json`, network up | green | `Updated <date>` |
-| localStorage cache | API failed, rates seen online before | amber | `Offline · cached <date>` |
-| `EMBEDDED_RATES` | API failed, nothing cached | amber | `Offline · built-in rates from <date>` |
+| `RATE_OVERRIDES` | all pinned, nothing downloaded | blue | `Hardcoded rates · as of <date>` |
+| downloaded set | all pinned, after ⬇ Latest (saved) | amber | `Downloaded rates · <date>` |
+| `rates.json` | live mode, file next to `index.html` parses | blue | `Manual rates.json · <date>` |
+| Live API | live mode, network up | green | `Updated <date>` |
+| localStorage cache | live mode, API failed, rates seen online before | amber | `Offline · cached <date>` |
+| `EMBEDDED_RATES` | live mode, API failed, nothing cached | amber | `Offline · built-in rates from <date>` |
 | None of the above | API failed and the baked-in set is broken | red | `Error: <message>` |
 
 `refreshRates()` is the single entry point (init + the ↻ button, which calls the
-`fetchRates()` alias): file → API → cache → baked-in. Every successful API fetch is written
-to `localStorage['exchange-rate-cache']`, so the app degrades to the freshest rates it has
-seen instead of showing nothing.
+`fetchRates()` alias). Every successful API fetch is written to
+`localStorage['exchange-rate-cache']`, so the app falls back to the freshest rates it has seen
+instead of showing nothing. The subtitle under the title always names the active set: *fixed
+rates* / *downloaded rates* / *live rates*.
+
+## Hardcoded rates — and downloading fresh ones
+
+```js
+const RATE_OVERRIDES = { AUD: 1, USD: 0.6722, KHR: 2733.5374 };
+const RATES_AS_OF = '15 Oct 2026';
+```
+
+USD is pinned at 0.6722 by request; KHR is pinned so `1 USD = 4,066.55 KHR`, the market cross
+on that date (`2837.763158 × 0.6722 / 0.69783`). In this mode `applyOverrides()` is a no-op —
+the source *is* the pinned set.
+
+- **⬇ Latest** (shown in this mode only) fetches the API, applies it immediately, and saves it
+  to `localStorage`, so every later open — online or not — reuses it. That button is the only
+  thing that uses the network.
+- **↺ Hardcoded** (shown once a download is saved) throws the download away and goes back to
+  the numbers in the file.
+- To make one currency live again, set it to `null` — the live chain comes back on and the
+  remaining pins are applied on top (see *Pinning a rate*).
+- To move the hardcoded set itself: `node bake-rates.js --hardcode` (keeps the USD pin, re-derives
+  KHR from the market cross, updates `RATES_AS_OF`).
 
 ## Offline on your phone
 
-The page needs no server and no network once it has rates — the amber status lines above are
-fully functional, just stale.
+Hardcoded mode is already offline: no fetch on load, no fetch on ↻ Refresh, no fetch on
+convert. Copy `index.html` to the phone (Drive, `scp`, USB) and open it from the file manager —
+the status bar reads `Hardcoded rates · as of 15 Oct 2026`.
 
-1. Re-bake the fallback rates so they are not months old:
-   ```bash
-   node bake-rates.js     # rewrites EMBEDDED_RATES in index.html from the live API
-   ```
-2. Copy `index.html` to the phone (Drive, `scp`, USB — it is one self-contained file).
-3. Open it from the phone's file manager (or Chrome → open file). No internet needed; the
-   status bar reads `Offline · built-in rates from <date>`.
+To refresh the numbers while away: tap **⬇ Latest** once where there is signal. The downloaded
+set is stored in the browser, so every later offline open uses it, and the page keeps working
+with the phone in airplane mode.
 
 Notes:
-- If you open it from a real URL instead, the browser also caches the last rates it fetched,
-  so later offline opens show `Offline · cached <date>` — fresher than the baked-in set.
-- `localStorage` is per-origin, and `file://` origins are quirky across browsers, so treat the
-  baked-in rates as the guaranteed offline path.
+- `localStorage` is per-origin and `file://` origins are quirky across browsers, so if the
+  download seems to vanish between opens, re-copy `index.html` after `bake-rates.js --hardcode`
+  on a machine with signal — the baked-in set is the guaranteed offline path.
 - A service worker / installable PWA would cache the *page* too, but service workers only
   register on HTTPS or localhost — `http://192.168.0.x` will not work. Needs hosting.
-- Rates drift. Re-bake and re-copy before a trip; the status line always shows how old they are.
+- Hardcoded rates go stale by design; the status line always shows how old they are.
 
-## Pinning a rate
+## Pinning a rate (live mode)
 
-`RATE_OVERRIDES` at the top of the script pins currencies; `null` means "keep it live":
-
-```js
-const RATE_OVERRIDES = { AUD: 1, USD: 0.6722, KHR: null };
-```
-
-When a currency is pinned, `applyOverrides()` **rescales the other live currencies by the
-same ratio** before pinning:
+With a `null` in `RATE_OVERRIDES` the app is in live mode, and a pinned currency makes
+`applyOverrides()` **rescale the other live currencies by the same ratio** before pinning:
 
 ```
-scale = pinned / live            // 0.6722 / 0.69793 = 0.9631
-rates.KHR = live.KHR * scale     // 2824.21 → 2720.09
+scale = pinned / live            // 0.6722 / 0.69783 = 0.96327
+rates.KHR = live.KHR * scale     // 2837.76 → 2733.54
 ```
 
-That keeps cross rates honest: 1 USD = 2720.09 / 0.6722 = **4,046.55 KHR** (market), instead
-of 2824.21 / 0.6722 = 4,201.44 (+3.6% drift) which is what you get if you pin one rate and
-leave the rest untouched. `applyOverrides()` rebuilds `rates` from `liveRates` every call, so
-it is idempotent — safe to re-run, including from the error path.
+That keeps cross rates honest: 1 USD = 2733.54 / 0.6722 = **4,066.55 KHR** (market), instead of
+2837.76 / 0.6722 = 4,190.35 (+3.0% drift) which is what you get if you pin one rate and leave
+the rest untouched. `applyOverrides()` rebuilds `rates` from `liveRates` every call, so it is
+idempotent — safe to re-run, including from the error path.
 
 ## rates.json (fixed rates without touching code)
 
@@ -126,7 +146,7 @@ each so the cards line up.
 The line under the heading is the mental anchor, rounded to the nearest 100 riel:
 
 ```
-A$1 ≈ 2,700 riel · US$1 ≈ 4,000 riel · 10,000 riel ≈ A$3.68 / US$2.47
+A$1 ≈ 2,700 riel · US$1 ≈ 4,100 riel · 10,000 riel ≈ A$3.66 / US$2.46
 ```
 
 Tapping a row loads that amount into the converter (`quickFill()`). Cheat-sheet cells use 2 dp
@@ -146,10 +166,10 @@ on ↻ Refresh — that only re-fetches rates.
 ## Rate history
 
 Stored in `localStorage['exchange-rate-history']` as `[{ date, timestamp, rates }]`, newest
-first, capped at 90 entries, deduped by `date`. Written automatically on each successful
-live-API refresh. Export/Import buttons move that **history** array as JSON — importing does
-*not* change the active rates; only `rates.json` or `RATE_OVERRIDES` do that. Clear wipes
-localStorage after a confirm.
+first, capped at 90 entries, deduped by `date`. Written on each successful live-API refresh
+(including a ⬇ Latest download). Export/Import buttons move that **history** array as JSON —
+importing does *not* change the active rates; only ⬇ Latest, `rates.json` or `RATE_OVERRIDES`
+do that. Clear wipes localStorage after a confirm.
 
 ## Tests
 
@@ -158,22 +178,27 @@ node tests/harness.js
 ```
 
 Headless: extracts the inline `<script>` straight out of `index.html` (so it can't drift),
-stubs `document` / `localStorage` / `fetch`, and drives `refreshRates()` + `convert()` through
-live-API mode, `rates.json` mode, total-offline mode, `applyOverrides()` idempotency, and the
-KHR-direction conversions. It prints the resulting status line, `rates` object and conversions
-per scenario — a thrown error exits non-zero, otherwise eyeball the table.
+stubs `document` / `localStorage` / `fetch`, and prints one line per scenario: hardcoded mode
+(asserting **zero** fetch calls), ⬇ Latest download → saved → reused offline → ↺ Hardcoded,
+then live mode (`RATE_OVERRIDES.KHR = null`) through the API, `rates.json` (base USD), the
+offline cache and the baked-in fallback, plus `applyOverrides()` idempotency, small-value
+formatting, history import, and the rendered cheat cards. A thrown error exits non-zero;
+otherwise eyeball the table.
 
 ## Adding a currency
 
 1. `CURRENCIES`, `FLAGS`, `NAMES` near the top of the script
 2. `<option>` in both the From and To selects
 3. a card in `#rates-display` + `updateRatesDisplay()` if it needs a headline rate
-4. `RATE_OVERRIDES` — add it with `null` unless you want it pinned
+4. `RATE_OVERRIDES` — give it a number to stay offline, or `null` to keep it live
 
 ## Known limits
 
+- Hardcoded rates never refresh themselves — the numbers are as of `RATES_AS_OF` until you tap
+  ⬇ Latest or re-run `bake-rates.js --hardcode`.
 - The free `open.er-api.com` endpoint updates roughly once a day, and its own USD↔KHR cross
   differs ~0.2% from the AUD-based cross the app fetches.
 - No service worker: the **rates** work offline, but the page itself must be cached by the
   browser or copied onto the device. First paint before any source resolves shows `—`.
-- Tailwind Play CDN is fine for a personal tool, not for production traffic.
+- Tailwind Play CDN is fine for a personal tool, not for production traffic. Copied to a phone
+  the conversions still work but the page renders unstyled without network access to the CDN.

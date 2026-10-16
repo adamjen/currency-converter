@@ -4,10 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Exchange Rate Converter — AUD · USD · KHR</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- Vendored so the page styles itself with no network (see sw.js) -->
+  <script src="vendor/tailwind.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; }
+    body { font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
     .currency-flag { font-size: 1.5rem; }
     input[type="number"]::-webkit-inner-spin-button,
     input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -148,8 +153,8 @@
 
     <!-- Footer -->
     <footer class="text-center text-gray-600 text-xs pb-8">
-      <p>Rates from <a href="https://www.exchangerate-api.com" target="_blank" class="text-gray-500 hover:text-gray-400">exchangerate-api.com</a> (free tier, updated daily)</p>
-      <p class="mt-1">Built for Adam — runs 100% in browser, no server needed</p>
+      <p>Rates hardcoded in the file; <a href="https://www.exchangerate-api.com" target="_blank" class="text-gray-500 hover:text-gray-400">exchangerate-api.com</a> is used only when you tap ⬇ Latest</p>
+      <p class="mt-1">Built for Adam — runs 100% in the browser, works offline</p>
     </footer>
   </div>
 
@@ -207,6 +212,21 @@ document.addEventListener('DOMContentLoaded', () => {
   loadHistory();
   refreshRates();
 });
+
+// Installable + offline: the service worker precaches the shell. Browsers only
+// allow it on HTTPS or localhost, so this is a no-op on the LAN IP.
+function registerServiceWorker() {
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* not HTTPS, or blocked */ });
+    });
+  } catch (e) {
+    /* headless harness: no navigator/location */
+  }
+}
+registerServiceWorker();
 
 // ── Rate Sources ───────────────────────────────────────────────────────
 // An optional rates.json next to index.html wins over the live API:

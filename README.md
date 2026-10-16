@@ -173,6 +173,11 @@ explicit **Convert** button for touch use, and `type="number"` + `inputmode="dec
 `enterkeyhint="go"` give the numeric keypad with a Go key on iOS/Android. Nothing here depends
 on ↻ Refresh — that only re-fetches rates.
 
+The ⇄ **Swap** button swaps the two currencies *and* carries the amount across: 10 AUD → 6.7220
+USD becomes 6.722 USD → 10 AUD, not 6.7220 AUD. It reuses the rounding the result box showed
+(`roundForDisplay()` — whole riel for KHR, 4 dp otherwise), so the number you swap is the number
+you saw, and swapping twice returns the original. An empty amount stays empty.
+
 ## Rate history
 
 Stored in `localStorage['exchange-rate-history']` as `[{ date, timestamp, rates }]`, newest

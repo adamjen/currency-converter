@@ -193,5 +193,27 @@ const hidden = (id) => els.get(id).classList.classes.has('hidden') ? 'hidden' : 
   line('L) tap 10k KHR', `${els.get('from-amount').value} ${els.get('from-currency').value}->${els.get('to-currency').value}`);
   line('L) result', `${els.get('to-amount').textContent} ${els.get('to-currency').value} | ${els.get('conversion-detail').textContent}`);
 
+  // ── M) swap carries the amount across ────────────────────────────────
+  els.get('from-currency').value = 'AUD';
+  els.get('to-currency').value = 'USD';
+  els.get('from-amount').value = '10';
+  sandbox.convert();
+  line('M) before swap', `${els.get('from-amount').value} ${els.get('from-currency').value}->${els.get('to-currency').value} = ${els.get('to-amount').textContent}`);
+  sandbox.swapCurrencies();
+  line('M) after swap', `${els.get('from-amount').value} ${els.get('from-currency').value}->${els.get('to-currency').value} = ${els.get('to-amount').textContent}`);
+  sandbox.swapCurrencies();
+  line('M) swapped back', `${els.get('from-amount').value} ${els.get('from-currency').value}->${els.get('to-currency').value} = ${els.get('to-amount').textContent}`);
+
+  els.get('from-currency').value = 'AUD';
+  els.get('to-currency').value = 'KHR';
+  els.get('from-amount').value = '10';
+  sandbox.convert();
+  sandbox.swapCurrencies();
+  line('M) KHR whole riel', `${els.get('from-amount').value} ${els.get('from-currency').value}->${els.get('to-currency').value}`);
+
+  els.get('from-amount').value = '';
+  sandbox.swapCurrencies();
+  line('M) empty amount', `'${els.get('from-amount').value}' ${els.get('from-currency').value}->${els.get('to-currency').value}`);
+
   console.log(out.join('\n'));
 })().catch(e => { console.error('HARNESS FAILED:', e); process.exit(1); });

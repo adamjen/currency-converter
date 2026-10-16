@@ -142,7 +142,8 @@ idempotent — safe to re-run, including from the error path.
 - `|n| < 1` → 6 significant digits, so `1 KHR → USD` shows `0.000247124` instead of rounding
   to `0.0002`
 - KHR → 0 dp for amounts, 2 dp for rate lines
-- otherwise 4 dp (2 dp above 1000)
+- otherwise **2 dp for amounts** (cents), 4 dp for rate lines — `10.00`, not `10.0000`, while
+  `1 USD = 1.4877 AUD` keeps its precision
 
 `fmt()` / `convert()` render `—` rather than `NaN` when a currency has no rate yet (e.g. the
 KHR card before the first fetch resolves).
@@ -173,10 +174,11 @@ explicit **Convert** button for touch use, and `type="number"` + `inputmode="dec
 `enterkeyhint="go"` give the numeric keypad with a Go key on iOS/Android. Nothing here depends
 on ↻ Refresh — that only re-fetches rates.
 
-The ⇄ **Swap** button swaps the two currencies *and* carries the amount across: 10 AUD → 6.7220
-USD becomes 6.722 USD → 10 AUD, not 6.7220 AUD. It reuses the rounding the result box showed
-(`roundForDisplay()` — whole riel for KHR, 4 dp otherwise), so the number you swap is the number
-you saw, and swapping twice returns the original. An empty amount stays empty.
+The ⇄ **Swap** button swaps the two currencies *and* carries the amount across: 10 AUD → 6.72
+USD becomes 6.72 USD → 10 AUD, not 6.7200 AUD. It reuses the rounding the result box showed
+(`roundForDisplay()` — whole riel for KHR, 2 dp otherwise), so the number you swap is the number
+you saw, and swapping twice gets you back to the same figure (10 AUD → 27,335 KHR → swap →
+27,335 KHR → 10.00 AUD). An empty amount stays empty.
 
 ## Rate history
 

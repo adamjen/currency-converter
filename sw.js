@@ -1,6 +1,6 @@
 // Service worker: precaches the app shell so the page opens with no network at all.
 // Bump VERSION on every deploy — old clients keep serving the old shell until they do.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL = [
   './',
   './index.html',

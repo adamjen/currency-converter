@@ -548,7 +548,7 @@ function swapCurrencies() {
 function roundForDisplay(n, currency) {
   const a = Math.abs(n);
   if (a !== 0 && a < 1) return Number(n.toPrecision(6));
-  return Number(n.toFixed(currency === 'KHR' ? 0 : (a >= 1000 ? 2 : 4)));
+  return Number(n.toFixed(currency === 'KHR' ? 0 : 2));
 }
 
 // ── Rate History (localStorage + JSON) ─────────────────────────────────
@@ -661,7 +661,8 @@ function formatAmount(n, currency, isRate = false) {
   const a = Math.abs(n);
   if (a !== 0 && a < 1) return n.toLocaleString('en-US', { maximumSignificantDigits: 6 });
   if (currency === 'KHR') return formatNum(n, isRate ? 2 : 0);
-  return formatNum(n, a >= 1000 ? 2 : 4);
+  // Money shows cents; the rate line keeps 4 dp so 1 USD = 1.4877 AUD stays precise.
+  return formatNum(n, isRate ? 4 : 2);
 }
 
 function formatNum(n, decimals = 4) {
